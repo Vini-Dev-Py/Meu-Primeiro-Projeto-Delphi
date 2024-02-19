@@ -1,0 +1,196 @@
+unit cCadCategoria;
+
+interface
+
+uses System.Classes,
+     Vcl.Controls,
+     Vcl.ExtCtrls,
+     Vcl.Dialogs,
+     ZAbstractConnection,
+     ZConnection,
+     ZAbstractRODataset,
+     ZAbstractDataset,
+     ZDataset,
+     System.SysUtils;
+
+type
+  TCategoria = class
+    private
+        ConexaoDB: TZConnection;
+
+        F_id: integer;
+        F_descricao: string;
+    function getCodigo: integer;
+    function getDescricao: string;
+    procedure setCodigo(const Value: integer);
+    procedure setDescricao(const Value: string);
+    public
+        constructor Create(aConexao: TZConnection);
+        destructor Destroy; override;
+
+        function Inserir:Boolean;
+        function Atualizar:Boolean;
+        function Apagar:Boolean;
+        function Selecionar(id:Integer):Boolean;
+    published
+        property codigo: integer read getCodigo write setCodigo;
+        property descricao: string read getDescricao write setDescricao;
+  end;
+
+implementation
+
+{ TCategoria }
+
+{$REGION 'Função para manipular dados do banco'}
+
+function TCategoria.Selecionar(id: Integer): Boolean;
+var Qry: TZQuery;
+begin
+    try
+        Result := True;
+
+        Qry := TZQuery.Create(nil);
+        Qry.Connection := ConexaoDB;
+        Qry.SQL.Clear;
+
+        Qry.SQL.Add('SELECT * FROM categorias WHERE id = :id');
+        Qry.ParamByName('id').AsInteger := id;
+
+        try
+            Qry.Open;
+
+            Self.F_id := Qry.FieldByName('id').AsInteger;
+            Self.F_descricao := Qry.FieldByName('descricao').AsString;
+        except
+            Result := False;
+        end;
+    finally
+        if (Assigned(Qry)) then begin
+            FreeAndNil(Qry);
+        end;
+    end;
+end;
+
+function TCategoria.Inserir: Boolean;
+var Qry: TZQuery;
+begin
+    try
+        Result := True;
+
+        Qry := TZQuery.Create(nil);
+        Qry.Connection := ConexaoDB;
+        Qry.SQL.Clear;
+
+        Qry.SQL.Add('INSERT INTO categorias (descricao) values (:descricao)');
+        Qry.ParamByName('descricao').AsString := Self.F_descricao;
+
+        try
+            Qry.ExecSQL;
+        except
+            Result := False;
+        end;
+    finally
+        if (Assigned(Qry)) then begin
+            FreeAndNil(Qry);
+        end;
+    end;
+end;
+
+function TCategoria.Atualizar: Boolean;
+var Qry: TZQuery;
+begin
+    try
+        Result := True;
+
+        Qry := TZQuery.Create(nil);
+        Qry.Connection := ConexaoDB;
+        Qry.SQL.Clear;
+
+        Qry.SQL.Add('UPDATE categorias SET descricao = :descricao WHERE id = :id');
+        Qry.ParamByName('id').AsInteger := Self.F_id;
+        Qry.ParamByName('descricao').AsString := Self.F_descricao;
+
+        try
+            Qry.ExecSQL;
+        except
+            Result := False;
+        end;
+    finally
+        if (Assigned(Qry)) then begin
+            FreeAndNil(Qry);
+        end;
+    end;
+end;
+
+function TCategoria.Apagar: Boolean;
+var Qry: TZQuery;
+begin
+    if MessageDlg('Apagar o Registro: ' + #13 + #13 +
+                  'Código: ' + IntToStr(F_id) + #13 +
+                  'Descrição: ' + F_descricao, mtConfirmation,
+                  [mbYes, mbNo], 0) = mrNo then begin
+        Result := False;
+        Abort;
+    end;
+
+    try
+        Result := True;
+
+        Qry := TZQuery.Create(nil);
+        Qry.Connection := ConexaoDB;
+        Qry.SQL.Clear;
+
+        Qry.SQL.Add('DELETE FROM categoria WHERE id = :id');
+        Qry.ParamByName('id').AsInteger := id;
+
+        try
+            Qry.ExecSQL;
+        finally
+            Result := False;
+        end;
+    finally
+
+    end;
+end;
+
+{$ENDREGION}
+
+{$REGION 'Constructor e Destructor'}
+
+constructor TCategoria.Create(aConexao: TZConnection);
+begin
+    ConexaoDB := aConexao;
+end;
+
+destructor TCategoria.Destroy;
+begin
+  inherited;
+end;
+
+{$ENDREGION}
+
+{$REGION 'Gets e Sets'}
+
+function TCategoria.getCodigo: integer;
+begin
+    Result := Self.F_id;
+end;
+
+procedure TCategoria.setCodigo(const Value: integer);
+begin
+    Self.F_id := Value;
+end;
+
+function TCategoria.getDescricao: string;
+begin
+    Result := Self.F_descricao;
+end;
+
+procedure TCategoria.setDescricao(const Value: string);
+begin
+    Self.F_descricao := Value;
+end;
+
+{$ENDREGION}
+
+end.

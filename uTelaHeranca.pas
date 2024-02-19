@@ -1,0 +1,339 @@
+unit uTelaHeranca;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ComCtrls, Vcl.ExtCtrls, Data.DB,
+  Vcl.Grids, Vcl.DBGrids, Vcl.StdCtrls, Vcl.Buttons, Vcl.Mask, Vcl.DBCtrls,
+  ZAbstractRODataset, ZAbstractDataset, ZDataset, uDtmConexao, uEnum;
+
+type
+  TfrmTelaHeranca = class(TForm)
+    pgcPrincipal: TPageControl;
+    pnlRodape: TPanel;
+    tabListagem: TTabSheet;
+    tabManutencao: TTabSheet;
+    Panel1: TPanel;
+    mskPesquisar: TMaskEdit;
+    btnPesquisar: TBitBtn;
+    grdListagem: TDBGrid;
+    btnNovo: TBitBtn;
+    btnAlterar: TBitBtn;
+    btnCancelar: TBitBtn;
+    btnApagar: TBitBtn;
+    btnGravar: TBitBtn;
+    btnNavigator: TDBNavigator;
+    btnFechar: TBitBtn;
+    QryListagem: TZQuery;
+    dtsListagem: TDataSource;
+    lblIndice: TLabel;
+    procedure FormCreate(Sender: TObject);
+    procedure btnFecharClick(Sender: TObject);
+    procedure btnNovoClick(Sender: TObject);
+    procedure btnCancelarClick(Sender: TObject);
+    procedure btnGravarClick(Sender: TObject);
+    procedure btnApagarClick(Sender: TObject);
+    procedure btnAlterarClick(Sender: TObject);
+    procedure FormShow(Sender: TObject);
+    procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    procedure grdListagemTitleClick(Column: TColumn);
+    procedure mskPesquisarChange(Sender: TObject);
+    procedure grdListagemDblClick(Sender: TObject);
+  private
+    { Private declarations }
+    
+    procedure ControlarBotoes(
+      btnNovo, btnAlterar, btnCancelar, btnGravar,
+      btnApagar:TBitBtn; Navegador:TDBNavigator;
+      pgcPrincipal: TPageControl; Flag:Boolean);
+
+    procedure ControlarIndiceTab(pgcPrincipal: TPageControl; Indice: Integer);
+    function RetornarCampoTraduzido(Campo: string): string;
+    procedure ExibirLabelIndice(Campo: string; aLabel: TLabel);
+    function ExisteCampoObrigatorio: Boolean;
+    procedure DesabilitarEditPK;
+    procedure LimparEdits;
+  public
+    { Public declarations }
+    EstadoDoCadastro:TEstadoDoCadastro;
+    IndiceAtual: string;
+
+    function Apagar: Boolean; virtual;
+    function Gravar(EstadoDoCadastro: TEstadoDoCadastro): Boolean; virtual;
+  end;
+
+var
+  frmTelaHeranca: TfrmTelaHeranca;
+
+implementation
+
+{$R *.dfm}
+
+{$REGION 'OBSERVAÇÕES'}
+    // TAG: 1 - Chave Primária - PK
+    // TAG: 2 - Campos Obrigatórios
+{$ENDREGION}
+
+{$REGION 'Procedures de Navegação'}
+// É possivel fazer isso de uma outra forma ?
+// Ela realmente precisa de todos esses parametros ?
+procedure TfrmTelaHeranca.ControlarBotoes(
+  btnNovo, btnAlterar, btnCancelar, btnGravar,
+  btnApagar:TBitBtn; Navegador:TDBNavigator;
+  pgcPrincipal: TPageControl; Flag:Boolean);
+begin
+    btnNovo.Enabled := Flag;
+    btnApagar.Enabled := Flag;
+    btnAlterar.Enabled := Flag;
+    Navegador.Enabled := Flag;
+    pgcPrincipal.Pages[0].TabVisible := Flag;
+    pgcPrincipal.Pages[1].TabVisible := not(Flag);
+    btnCancelar.Enabled := not(Flag);
+    btnGravar.Enabled := not(Flag);
+end;
+
+// Criando nossa função que controla o index do tab
+
+procedure TfrmTelaHeranca.ControlarIndiceTab(pgcPrincipal: TPageControl; Indice: Integer);
+begin
+    if (pgcPrincipal.Pages[Indice].TabVisible) then
+        pgcPrincipal.TabIndex := Indice;
+end;
+{$ENDREGION}
+
+{$REGION 'Funções e Procedures para pesquisar itens'}
+
+function TfrmTelaHeranca.RetornarCampoTraduzido(Campo: string): string;
+var i: Integer;
+begin
+    for i := 0 to QryListagem.Fields.Count - 1 do begin
+        if (lowercase(QryListagem.Fields[i].FieldName) = lowercase(Campo)) then begin
+            Result := QryListagem.Fields[i].DisplayLabel;
+
+            Break;
+        end;
+    end;
+end;
+
+procedure TfrmTelaHeranca.ExibirLabelIndice(Campo: string; aLabel: TLabel);
+begin
+    aLabel.Caption := RetornarCampoTraduzido(Campo);
+end;
+
+procedure TfrmTelaHeranca.grdListagemTitleClick(Column: TColumn);
+begin
+    IndiceAtual := Column.FieldName;
+
+    QryListagem.IndexFieldNames := IndiceAtual;
+
+    ExibirLabelIndice(IndiceAtual, lblIndice);
+end;
+
+procedure TfrmTelaHeranca.mskPesquisarChange(Sender: TObject);
+begin
+    QryListagem.Locate(IndiceAtual, TMaskEdit(Sender).Text, [loPartialKey]);
+end;
+
+{$ENDREGION}
+
+// Chamando a função para cada botão da tela, passando os parametros para cada situação
+
+procedure TfrmTelaHeranca.btnNovoClick(Sender: TObject);
+begin
+    ControlarBotoes(btnNovo, btnAlterar, btnCancelar, btnGravar, btnApagar, btnNavigator, pgcPrincipal, false);
+
+    EstadoDoCadastro := ecInserir;
+    LimparEdits;
+end;
+
+procedure TfrmTelaHeranca.btnAlterarClick(Sender: TObject);
+begin
+    ControlarBotoes(btnNovo, btnAlterar, btnCancelar, btnGravar, btnApagar, btnNavigator, pgcPrincipal, false);
+
+    EstadoDoCadastro := ecAlterar;
+end;
+
+{$REGION 'Botões Cancelar, Gravar e Apagar'}
+
+// Cancelar, Gravar e Apagar usam a mesma logica ? Não podemos ter apenas uma função ?
+
+procedure TfrmTelaHeranca.btnApagarClick(Sender: TObject);
+begin
+    try
+        if (Apagar) then begin
+            ControlarBotoes(btnNovo, btnAlterar, btnCancelar, btnGravar, btnApagar, btnNavigator, pgcPrincipal, true);
+            ControlarIndiceTab(pgcPrincipal, 0);
+            LimparEdits;
+
+            QryListagem.Refresh;
+        end
+        else begin
+            MessageDlg('Erro ao tentar apagar', mtError, [mbOK], 0);
+        end;
+    finally
+      EstadoDoCadastro := ecNenhum;
+    end;
+end;
+
+procedure TfrmTelaHeranca.btnCancelarClick(Sender: TObject);
+begin
+    ControlarBotoes(btnNovo, btnAlterar, btnCancelar, btnGravar, btnApagar, btnNavigator, pgcPrincipal, true);
+    ControlarIndiceTab(pgcPrincipal, 0);
+
+    EstadoDoCadastro := ecNenhum;
+    LimparEdits;
+end;
+
+procedure TfrmTelaHeranca.btnGravarClick(Sender: TObject);
+begin
+    if (ExisteCampoObrigatorio) then begin
+        Abort;
+    end;
+
+    try
+        if Gravar(EstadoDoCadastro) then begin
+          ControlarBotoes(btnNovo, btnAlterar, btnCancelar, btnGravar, btnApagar, btnNavigator, pgcPrincipal, true);
+          ControlarIndiceTab(pgcPrincipal, 0);
+          EstadoDoCadastro := ecNenhum;
+          LimparEdits;
+
+          QryListagem.Refresh;
+        end
+        else begin
+            MessageDlg('Erro na gravação', mtError, [mbOK], 0);
+        end;
+    finally
+    end;
+end;
+
+// Encontrar uma forma de usar a mesma função para os botões
+// É possivel fazer isso de uma outra forma ?
+
+{$ENDREGION}
+
+{$REGION 'Função de Excluir e Gravar'}
+
+function TfrmTelaHeranca.Apagar: Boolean;
+begin
+    ShowMessage('Deletado');
+
+    Result := True;
+end;
+
+function TfrmTelaHeranca.Gravar(EstadoDoCadastro: TEstadoDoCadastro): Boolean;
+begin
+    if (EstadoDoCadastro = ecInserir) then
+        showMessage('Inserir')
+    else if (EstadoDoCadastro = ecAlterar) then
+        showMessage('Alterar');
+
+    Result := True;
+end;
+
+{$ENDREGION}
+
+procedure TfrmTelaHeranca.btnFecharClick(Sender: TObject);
+begin
+    Close;
+end;
+
+{$REGION 'Procedures responsaveis pelo estado da nossa aplicação'}
+
+procedure TfrmTelaHeranca.FormCreate(Sender: TObject);
+begin
+    QryListagem.Connection := dtmPrincipal.ConexaoDB;
+    dtsListagem.DataSet := QryListagem;
+    grdListagem.DataSource := dtsListagem;
+
+    grdListagem.Options := [
+      dgTitles,dgIndicator,dgColumnResize,
+      dgColLines,dgRowLines,dgTabs,dgRowSelect,
+      dgAlwaysShowSelection,dgCancelOnExit,
+      dgTitleClick,dgTitleHotTrack
+    ]
+end;
+
+procedure TfrmTelaHeranca.FormShow(Sender: TObject);
+begin
+    if (QryListagem.SQL.Text <> EmptyStr) then begin
+        QryListagem.IndexFieldNames := IndiceAtual;
+
+        ExibirLabelIndice(IndiceAtual, lblIndice);
+
+        QryListagem.Open;
+    end;
+
+    ControlarIndiceTab(pgcPrincipal, 0);
+    DesabilitarEditPK;
+    ControlarBotoes(btnNovo, btnAlterar, btnCancelar, btnGravar, btnApagar, btnNavigator, pgcPrincipal, true);
+end;
+
+procedure TfrmTelaHeranca.FormClose(Sender: TObject; var Action: TCloseAction);
+begin
+    QryListagem.Close;
+end;
+
+{$ENDREGION}
+
+{$REGION 'Campos Obrigatorios'}
+
+function TfrmTelaHeranca.ExisteCampoObrigatorio:Boolean;
+var i:Integer;
+begin
+    Result := False;
+
+    for i := 0 to ComponentCount - 1 do begin
+        if (Components[i] is TLabeledEdit) then begin
+          if (TLabeledEdit(Components[i]).Tag = 2) and
+             (TLabeledEdit(Components[i]).Text = EmptyStr) then begin
+              MessageDlg(TLabeledEdit(Components[i]).EditLabel.Caption + ' é um campo obrigatorio', mtInformation, [mbOK], 0);
+
+              TLabeledEdit(Components[i]).SetFocus;
+              Result := True;
+              Break;
+          end;
+        end;
+    end;
+end;
+
+{$ENDREGION}
+
+{$REGION 'Bloquear campo id'}
+
+procedure TfrmTelaHeranca.DesabilitarEditPK;
+var i:Integer;
+begin
+    for i := 0 to ComponentCount - 1 do begin
+        if (Components[i] is TLabeledEdit) then begin
+            if (TLabeledEdit(Components[i]).Tag = 1) then begin
+                TLabeledEdit(Components[i]).Enabled := False;
+
+                Break;
+            end;
+        end;
+    end;
+end;
+
+{$ENDREGION}
+
+procedure TfrmTelaHeranca.grdListagemDblClick(Sender: TObject);
+begin
+    btnAlterar.Click;
+end;
+
+{$REGION 'Limpando campos'}
+procedure TfrmTelaHeranca.LimparEdits;
+var i:Integer;
+begin
+    for i := 0 to ComponentCount - 1 do begin
+        if (Components[i] is TLabeledEdit) then begin
+            TLabeledEdit(Components[i]).Text := EmptyStr;
+        end
+        else if (Components[i] is TEdit) then begin
+            TEdit(Components[i]).Text := '';
+        end;
+    end;
+end;
+{$ENDREGION}
+end.
